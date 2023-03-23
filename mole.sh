@@ -88,12 +88,8 @@ create_s_log()
       fi
     fi
   done
-  echo
   for line_to_format in $(printf '%s' "$to_print" | tr + '\n')
   do
-    for date in $(printf '%s' "$to_print" | tr , '\n')
-    do
-    done
     line_to_print=$(printf '%s' "$line_to_format" | awk -F ';' '{print $1}');
     
     echo $line_to_print

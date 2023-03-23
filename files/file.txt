@@ -1,3 +1,4 @@
-/home/andrej/Learning/ios/1projekt/files/test2.txt;cgroup1,cgroup2;1679527057,1679527065,1679527067
-/home/andrej/Learning/ios/1projekt/file.txt;nice,hello;1679430868,1679430878
-/home/andrej/Learning/ios/1projekt/test2.txt;cgroup1;1679430987
+/home/andrej/Learning/ios/ios_project_1/files/test2.txt;cgroup1;1679577025
+/home/andrej/Learning/ios/ios_project_1/helasdlfsdfsfjskdf.txt;cgroup1,cgroup2;1679576946
+/home/andrej/Learning/ios/ios_project_1/test2.txt;cgroup1,cgroup2;1679576971,1679576973,1679576989
+/home/andrej/Learning/ios/ios_project_1/test.txt;cgroup1;1679577004
