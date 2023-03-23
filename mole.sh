@@ -141,7 +141,7 @@ create_s_log()
     fi
     if $use
     then
-      dates_to_write=$dates_to_write';'$(date +%Y-%m-%d_%H-%m-%S -d @$date)
+      dates_to_write=$dates_to_write';'$(date +%Y-%m-%d_%H-%M-%S -d @$date)
       n_d=$(($n_d+1))
     fi
     done
@@ -149,7 +149,7 @@ create_s_log()
     file_to_print=$file_to_print$line_to_print:
   done
 
-  file_name="/home/$USER/.mole/log_$USER_$(date +%Y-%m-%d_%H-%m-%S)"
+  file_name="/home/$USER/.mole/log_$USER_$(date +%Y-%m-%d_%H-%M-%S)"
   if ! [ -d ~/.mole ]
   then
     if ! mkdir ~/.mole
