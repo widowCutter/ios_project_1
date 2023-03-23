@@ -32,6 +32,20 @@ help()
   
 }
 
+execEditor(){
+  if [ $EDITOR ]
+  then
+    exec $EDITOR $1
+  else
+    if [ "$VISUAL" ]
+      then
+        exec $VISUAL $1
+      else
+        exec vi $1
+    fi
+  fi
+}
+
 create_s_log()
 {
   while read line
@@ -55,7 +69,6 @@ create_s_log()
       fi
     done
   done < $MOLE_RC
-  echo $matching
   
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
@@ -91,10 +104,48 @@ create_s_log()
   for line_to_format in $(printf '%s' "$to_print" | tr + '\n')
   do
     line_to_print=$(printf '%s' "$line_to_format" | awk -F ';' '{print $1}');
-    
-    echo $line_to_print
+    dates_to_write=
+    n_d=0
+    for date in $(printf '%s' "$line_to_format"| awk -F ';' '{print $3}' | tr , '\n')
+    do
+      use=true
+    if [ "$MAX_TIME" ]; then
+      if ! [ "$date" -le "$MAX_TIME" ]
+        then
+          use=false
+      fi
+    fi
+    if [ "$MIN_TIME" ]; then
+      if ! [ "$date" -ge "$MIN_TIME" ]
+        then
+          use=false
+      fi
+    fi
+    if $use
+    then
+      dates_to_write=$dates_to_write';'$(date +%Y-%m-%d_%H-%m-%S -d @$date)'_'$n_d
+      n_d=$(($n_d+1))
+    fi
+    done
+    line_to_print=$line_to_print$dates_to_write
+    file_to_print=$file_to_print$line_to_print:
   done
-    
+  echo $file_to_print
+
+  file_name="/home/$USER/.mole/log_$USER_$(date +%Y-%m-%d_%H-%m-%S)"
+  if [ -d '~/.mole' ]
+  then
+    if ! mkdir ~/.mole
+    then
+      echo "mkdir failed"
+      exit 1
+    fi
+  fi
+  for line in $(printf '%s' "$file_to_print"| tr : '\n')
+  do 
+    echo "$line" >> "$file_name"
+  done
+  
   exit 0
 }
 
@@ -182,6 +233,7 @@ list()
   for line_to_format in $(printf '%s' "$to_print" | tr + '\n')
   do
     line_to_print=$(printf '%s' "$line_to_format" | awk -F ';' '{print $1}')
+    line_to_print=$(basename "$line_to_print")
     
     line_to_print=$(printf '%s' "$line_to_print"):$(printf %"$(($longest_name - $(printf '%s' "$line_to_format" | awk -F ';' '{print $1}'| awk '{print length}')))"s)' '$(printf '%s' "$line_to_format" | awk -F ';' '{print $2}')
     if [ $(printf '%s' "$line_to_format" | awk -F ';' '{print $2}'| awk '{print length}') -le 0 ]
@@ -199,7 +251,6 @@ list()
 
 
 addFileToList(){
-  echo hello
   FILE="$1;$FGROUPS;$(date +%s)"
   echo $FILE >> $MOLE_RC
   sort -f $MOLE_RC -o $MOLE_RC
@@ -230,7 +281,7 @@ openDir(){
   echo $matching
   
   most_open=0
-  to_open=
+  to_open=helkj
   last_opened=0
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
@@ -278,8 +329,6 @@ openDir(){
     then
       if [ $M ]
       then
-        echo "M"
-        echo "$n_line times open=$times_open"
         if [ "$times_open" -gt "$most_open" ]
         then
           most_open=$times_open
@@ -294,12 +343,11 @@ openDir(){
             to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
           fi
         done
-        echo done
       fi
     fi
   done
   findFileInList $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
-  
+  execEditor $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
     
   exit 0
 }
@@ -338,7 +386,7 @@ findFileInList(){
   N_LINE=0
   for line in $LIST; do
     out=$(printf '%s' "$line" | awk -v out="$out" '{sub(/;.*/, ""); print $0}')
-    if [ $out = $1 ] 
+    if [ "$out" = "$1" ] 
     then
       addGroupToFile $N_LINE
       return 0
@@ -350,14 +398,15 @@ findFileInList(){
   return 1
 }
 
-if [ $1 = 'list' ]
+if [ "$1" = 'list' ]
 then
   OPTIND=2
-  elif [ $1 = 'secret-log' ]
+  elif [ "$1" = 'secret-log' ]
   then
   OPTIND=2
 fi
 
+ARGS=0
 while getopts "hmg: b: a: " options; do
   ARGS=$((ARGS+1))
   case "${options}" in
@@ -426,7 +475,7 @@ if [ $MOLE_RC ]
 fi
 
 
-if [ $1 = 'secret-log' ]
+if [ "$1" = 'secret-log' ]
 then
   ARGS=$(($ARGS+1))
   count=$ARGS
@@ -436,9 +485,8 @@ then
   else
     for i in $@
     do
-      if [ "$count" -le "$(($# - $ARGS - 2))" ]
+      if [ "$count" -le "$(($# - $ARGS - 1))" ]
       then
-        echo $i
         if [ $dir_to_log ]
         then
           dir_to_log=$dir_to_log,$i
@@ -455,7 +503,7 @@ then
   fi
 fi
 
-if [ $1 = 'list' ]
+if [ "$1" = 'list' ]
 then
   ARGS=$(($ARGS+1))
   if [ $ARGS -ge "$#" ]
@@ -481,12 +529,10 @@ else
   for i in $@; do :; done
   if [ -f $i ]
   then
-    echo file exists
-    if findFileInList $(realpath "$i")
+    if ! findFileInList $(realpath "$i")
     then
-      echo 'file found in list'
-    else
       addFileToList $(realpath "$i")
+      execEditor $i
     fi
   elif [ -d "$i" ]
   then
@@ -494,16 +540,5 @@ else
   else
     echo "Supplied file or directory doesn't exist"
     exit 1
-  fi
-  if [ $EDITOR ]
-  then
-    echo 'exec '$EDITOR '!!debug!!'
-  else
-    if [ "$VISUAL" ]
-      then
-        echo 'exec '$VISUAL '!!debug!!'
-      else
-        echo 'exec vi !!debug!!'
-    fi
   fi
 fi
