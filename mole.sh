@@ -56,7 +56,6 @@ create_s_log()
     done
   done < $MOLE_RC
   echo $matching
-  exit 10
   
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
@@ -79,56 +78,28 @@ create_s_log()
         fi
       fi
     done
-    g_outer=false
-    for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
-    do
-      g_inner=false
-      for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
-      do
-        g_outer=true
-        if [ $group_entry = $group_in ]
-        then
-          g_inner=true
-        fi
-      done
-      if ! $g_inner
-      then
-        use=false
-      fi
-    done
-    if ! $g_outer
-    then
-      use=false
-    fi
     if $use
     then
-      if [ $M ]
+      if [ $to_print ]
       then
-        echo "M"
-        echo "$n_line times open=$times_open"
-        if [ "$times_open" -gt "$most_open" ]
-        then
-          most_open=$times_open
-          to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
-        fi
+        to_print="$to_print+$(printf '%s' "$n_line")"
       else
-        for time_opened in $(printf '%s' "$n_line"| awk -F ';' '{print $3}' | tr , '\n')
-        do
-          if [ "$time_opened" -gt "$last_opened" ]
-          then
-            last_opened=$time_opened
-            to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
-          fi
-        done
-        echo done
+        to_print=$(printf '%s' "$n_line")
       fi
     fi
   done
-  findFileInList $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
-  
+  echo
+  for line_to_format in $(printf '%s' "$to_print" | tr + '\n')
+  do
+    for date in $(printf '%s' "$to_print" | tr , '\n')
+    do
+    done
+    line_to_print=$(printf '%s' "$line_to_format" | awk -F ';' '{print $1}');
+    
+    echo $line_to_print
+  done
     
   exit 0
-  exit 10
 }
 
 list()
