@@ -32,16 +32,109 @@ help()
   
 }
 
+create_s_log()
+{
+  while read line
+  do
+    for dir in $(printf '%s' "$1" | tr , '\n')
+    do
+      dir=$(realpath $dir)/
+      entry=$(printf '%s' "$line" | awk -F ';' '{print $1}')
+      if ! [ $(printf '%s' "$dir" | awk -F '/' '{print NF-1}') -eq $(printf '%s' "$entry" | awk -F '/' '{print NF-1}') ]
+      then
+        continue
+      fi
+      if printf '%s' "$entry" | grep -q "$dir"
+      then
+       if [ $matching ]
+       then
+        matching="${matching}:$line"
+        else
+        matching="$line"
+       fi
+      fi
+    done
+  done < $MOLE_RC
+  echo $matching
+  exit 10
+  
+  for n_line in $(printf '%s' "$matching" | tr : '\n')
+  do
+    dates=$(printf '%s' "$n_line" | awk -F ';' '{print $3}')
+    times_open=0
+    for date in $(printf '%s' "$dates" | tr , '\n') 
+    do
+      times_open=$(($times_open+1))
+      use=true
+      if [ "$MAX_TIME" ]; then
+        if ! [ "$date" -le "$MAX_TIME" ]
+          then
+            use=false
+        fi
+      fi
+      if [ "$MIN_TIME" ]; then
+        if ! [ "$date" -ge "$MIN_TIME" ]
+          then
+            use=false
+        fi
+      fi
+    done
+    g_outer=false
+    for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
+    do
+      g_inner=false
+      for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
+      do
+        g_outer=true
+        if [ $group_entry = $group_in ]
+        then
+          g_inner=true
+        fi
+      done
+      if ! $g_inner
+      then
+        use=false
+      fi
+    done
+    if ! $g_outer
+    then
+      use=false
+    fi
+    if $use
+    then
+      if [ $M ]
+      then
+        echo "M"
+        echo "$n_line times open=$times_open"
+        if [ "$times_open" -gt "$most_open" ]
+        then
+          most_open=$times_open
+          to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
+        fi
+      else
+        for time_opened in $(printf '%s' "$n_line"| awk -F ';' '{print $3}' | tr , '\n')
+        do
+          if [ "$time_opened" -gt "$last_opened" ]
+          then
+            last_opened=$time_opened
+            to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
+          fi
+        done
+        echo done
+      fi
+    fi
+  done
+  findFileInList $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
+  
+    
+  exit 0
+  exit 10
+}
+
 list()
 {
-  echo $MAX_TIME
-  echo $MIN_TIME
-  
-  echo $1
-  
   w_dir=$1/
   local i=1
-  echo
   while read line
   do
     entry=$(printf '%s' "$line" | awk -F ';' '{print $1}')
@@ -293,6 +386,9 @@ findFileInList(){
 if [ $1 = 'list' ]
 then
   OPTIND=2
+  elif [ $1 = 'secret-log' ]
+  then
+  OPTIND=2
 fi
 
 while getopts "hmg: b: a: " options; do
@@ -362,6 +458,35 @@ if [ $MOLE_RC ]
     exit 1
 fi
 
+
+if [ $1 = 'secret-log' ]
+then
+  ARGS=$(($ARGS+1))
+  count=$ARGS
+  if [ $ARGS -ge "$#" ]
+  then
+    create_s_log
+  else
+    for i in $@
+    do
+      if [ "$count" -le "$(($# - $ARGS - 2))" ]
+      then
+        echo $i
+        if [ $dir_to_log ]
+        then
+          dir_to_log=$dir_to_log,$i
+        else
+          dir_to_log=$i
+        fi
+      fi
+      count=$(($count-1))
+    done
+    if [ -d $i ]
+    then
+      create_s_log $dir_to_log
+    fi
+  fi
+fi
 
 if [ $1 = 'list' ]
 then
