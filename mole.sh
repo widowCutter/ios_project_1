@@ -48,27 +48,41 @@ execEditor(){
 
 create_s_log()
 {
+  if [ $1 ]
+  then
+    while read line
+    do
+      for dir in $(printf '%s' "$1" | tr , '\n')
+      do
+        dir=$(realpath $dir)/
+        entry=$(printf '%s' "$line" | awk -F ';' '{print $1}')
+        if ! [ $(printf '%s' "$dir" | awk -F '/' '{print NF-1}') -eq $(printf '%s' "$entry" | awk -F '/' '{print NF-1}') ]
+        then
+          continue
+        fi
+        if printf '%s' "$entry" | grep -q "$dir"
+        then
+         if [ $matching ]
+         then
+          matching="${matching}:$line"
+          else
+          matching="$line"
+         fi
+        fi
+      done
+    done < $MOLE_RC
+  else
   while read line
   do
-    for dir in $(printf '%s' "$1" | tr , '\n')
-    do
-      dir=$(realpath $dir)/
       entry=$(printf '%s' "$line" | awk -F ';' '{print $1}')
-      if ! [ $(printf '%s' "$dir" | awk -F '/' '{print NF-1}') -eq $(printf '%s' "$entry" | awk -F '/' '{print NF-1}') ]
-      then
-        continue
-      fi
-      if printf '%s' "$entry" | grep -q "$dir"
-      then
        if [ $matching ]
        then
         matching="${matching}:$line"
         else
         matching="$line"
        fi
-      fi
-    done
   done < $MOLE_RC
+  fi
   
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
@@ -77,18 +91,22 @@ create_s_log()
     for date in $(printf '%s' "$dates" | tr , '\n') 
     do
       times_open=$(($times_open+1))
-      use=true
+      time_use=true
       if [ "$MAX_TIME" ]; then
-        if ! [ "$date" -le "$MAX_TIME" ]
+        if [ "$date" -ge "$MAX_TIME" ]
           then
-            use=false
+            time_use=false
         fi
       fi
       if [ "$MIN_TIME" ]; then
-        if ! [ "$date" -ge "$MIN_TIME" ]
+        if [ "$date" -le "$MIN_TIME" ]
           then
-            use=false
+            time_use=false
         fi
+      fi
+      if [ $time_use ]
+      then
+        use=true
       fi
     done
     if $use
@@ -123,17 +141,16 @@ create_s_log()
     fi
     if $use
     then
-      dates_to_write=$dates_to_write';'$(date +%Y-%m-%d_%H-%m-%S -d @$date)'_'$n_d
+      dates_to_write=$dates_to_write';'$(date +%Y-%m-%d_%H-%m-%S -d @$date)
       n_d=$(($n_d+1))
     fi
     done
     line_to_print=$line_to_print$dates_to_write
     file_to_print=$file_to_print$line_to_print:
   done
-  echo $file_to_print
 
   file_name="/home/$USER/.mole/log_$USER_$(date +%Y-%m-%d_%H-%m-%S)"
-  if [ -d '~/.mole' ]
+  if ! [ -d ~/.mole ]
   then
     if ! mkdir ~/.mole
     then
@@ -141,10 +158,16 @@ create_s_log()
       exit 1
     fi
   fi
+  if [ -f "$file_name'.bz2'" ]
+  then
+    rm "$file_name'.bz2'"
+  fi
+  touch "$file_name"
   for line in $(printf '%s' "$file_to_print"| tr : '\n')
   do 
     echo "$line" >> "$file_name"
   done
+  bzip2 -fz "$file_name"
   
   exit 0
 }
@@ -175,43 +198,50 @@ list()
   longest_name=0
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
+    use=false
     dates=$(printf '%s' "$n_line" | awk -F ';' '{print $3}')
     times_open=0
     for date in $(printf '%s' "$dates" | tr , '\n') 
     do
       times_open=$(($times_open+1))
-      use=true
+      time_use=true
       if [ "$MAX_TIME" ]; then
-        if ! [ "$date" -le "$MAX_TIME" ]
+        if [ "$date" -ge "$MAX_TIME" ]
           then
-            use=false
+            time_use=false
         fi
       fi
       if [ "$MIN_TIME" ]; then
-        if ! [ "$date" -ge "$MIN_TIME" ]
+        if [ "$date" -le "$MIN_TIME" ]
           then
-            use=false
+            time_use=false
         fi
       fi
+      if $time_use
+      then
+        use=true
+      fi
     done
-    g_outer=false
-    for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
-    do
-      g_inner=false
-      for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
+    if [ $FGROUPS ]
+    then
+      has_group=false
+      for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
       do
-        g_outer=true
-        if [ $group_entry = $group_in ]
+        for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
+        do
+          if [ $group_entry = $group_in ]
+          then
+            has_group=true
+            break
+          fi
+        done
+        if $has_group
         then
-          g_inner=true
+          break
         fi
       done
-      if ! $g_inner
-      then
-        use=false
-      fi
-    done
-    if ! $g_outer
+    fi
+    if ! $has_group
     then
       use=false
     fi
@@ -229,7 +259,7 @@ list()
       fi
     fi
   done
-  echo
+  
   for line_to_format in $(printf '%s' "$to_print" | tr + '\n')
   do
     line_to_print=$(printf '%s' "$line_to_format" | awk -F ';' '{print $1}')
@@ -242,8 +272,6 @@ list()
       else
         echo "$line_to_print"
     fi
-      
-    
   done
   
   exit 0
@@ -258,7 +286,6 @@ addFileToList(){
 
 openDir(){
   w_dir=$(realpath $1)/
-  echo $w_dir
   local i=1
   while read line
   do
@@ -278,58 +305,68 @@ openDir(){
     fi
     i=$((i+1))
   done < $MOLE_RC
-  echo $matching
+  if [ "$i" -le 1 ]
+  then
+    exit 1
+  fi
   
   most_open=0
-  to_open=helkj
   last_opened=0
   for n_line in $(printf '%s' "$matching" | tr : '\n')
   do
+    use=false
     dates=$(printf '%s' "$n_line" | awk -F ';' '{print $3}')
     times_open=0
     for date in $(printf '%s' "$dates" | tr , '\n') 
     do
       times_open=$(($times_open+1))
-      use=true
+      time_use=true
       if [ "$MAX_TIME" ]; then
-        if ! [ "$date" -le "$MAX_TIME" ]
+        if [ "$date" -ge "$MAX_TIME" ]
           then
-            use=false
+            time_use=false
         fi
       fi
       if [ "$MIN_TIME" ]; then
-        if ! [ "$date" -ge "$MIN_TIME" ]
+        if [ "$date" -le "$MIN_TIME" ]
           then
-            use=false
+            time_use=false
         fi
       fi
+      if [ $time_use ]
+      then
+        use=true
+      fi
     done
-    g_outer=false
-    for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
-    do
-      g_inner=false
-      for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
+    if [ $FGROUPS ]
+    then
+      g_outer=false
+      for group_in in $(printf '%s' "$FGROUPS" | tr , '\n')
       do
-        g_outer=true
-        if [ $group_entry = $group_in ]
+        g_inner=false
+        for group_entry in $(printf '%s' "$n_line"| awk -F ';' '{print $2}' | tr , '\n')
+        do
+          g_outer=true
+          if [ $group_entry = $group_in ]
+          then
+            g_inner=true
+          fi
+        done
+        if ! $g_inner
         then
-          g_inner=true
+          use=false
         fi
       done
-      if ! $g_inner
+      if ! $g_outer
       then
         use=false
       fi
-    done
-    if ! $g_outer
-    then
-      use=false
     fi
     if $use
     then
       if [ $M ]
       then
-        if [ "$times_open" -gt "$most_open" ]
+        if [ "$times_open" -ge "$most_open" ]
         then
           most_open=$times_open
           to_open=$(printf '%s' "$n_line"| awk -F ';' '{print $1}')
@@ -337,6 +374,23 @@ openDir(){
       else
         for time_opened in $(printf '%s' "$n_line"| awk -F ';' '{print $3}' | tr , '\n')
         do
+          time_use=true
+          if [ "$MAX_TIME" ]; then
+            if [ "$time_opened" -ge "$(($MAX_TIME))" ]
+              then
+                time_use=false
+            fi
+          fi
+          if [ "$MIN_TIME" ]; then
+            if [ "$time_opened" -le "$MIN_TIME" ]
+              then
+                time_use=false
+            fi
+          fi
+          if ! $time_use
+          then
+            continue
+          fi
           if [ "$time_opened" -gt "$last_opened" ]
           then
             last_opened=$time_opened
@@ -346,6 +400,10 @@ openDir(){
       fi
     fi
   done
+  if ! [ $to_open ]
+  then
+    exit 1
+  fi
   findFileInList $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
   execEditor $(printf '%s' "$to_open"| awk -F ';' '{print $1}')
     
@@ -374,6 +432,7 @@ addGroupToFile(){
   
   
   sed -i "$LINE_N s/;.*;/;$cur_Entry;/" $MOLE_RC
+  
   sed -i "$LINE_N s/$/,$(date +%s)/" $MOLE_RC
   
   
@@ -385,7 +444,7 @@ findFileInList(){
   LIST=$(cat $MOLE_RC)
   N_LINE=0
   for line in $LIST; do
-    out=$(printf '%s' "$line" | awk -v out="$out" '{sub(/;.*/, ""); print $0}')
+    out=$(printf '%s' "$line" | awk -F ';' '{print $1}')
     if [ "$out" = "$1" ] 
     then
       addGroupToFile $N_LINE
@@ -397,7 +456,6 @@ findFileInList(){
   done
   return 1
 }
-
 if [ "$1" = 'list' ]
 then
   OPTIND=2
@@ -416,13 +474,13 @@ while getopts "hmg: b: a: " options; do
       ;;
       
     g)
-      ARGS=$((ARGS+1))
       FGROUPS=${OPTARG}
       ;;
     b)
       ARGS=$((ARGS+1))
       MAX_TIME_S=${OPTARG}
       MAX_TIME=$(date +%s -d $MAX_TIME_S)
+      MAX_TIME=$(($MAX_TIME+43200))
       if ! [ "$MAX_TIME" ]
       then
         echo 'Wrong date supplied in argument "b"'
@@ -433,6 +491,7 @@ while getopts "hmg: b: a: " options; do
       ARGS=$((ARGS+1))
       MIN_TIME_S=${OPTARG}
       MIN_TIME=$(date +%s -d $MIN_TIME_S)
+      MIN_TIME=$(($MAX_TIME-43200))
       if ! [ "$MIN_TIME" ]
       then
         echo 'Wrong date supplied in argument "a"'
@@ -532,7 +591,6 @@ else
     if ! findFileInList $(realpath "$i")
     then
       addFileToList $(realpath "$i")
-      execEditor $i
     fi
   elif [ -d "$i" ]
   then
@@ -541,4 +599,5 @@ else
     echo "Supplied file or directory doesn't exist"
     exit 1
   fi
+  execEditor $i
 fi
